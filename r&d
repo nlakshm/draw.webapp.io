@@ -1,0 +1,218 @@
+import numpy as np
+import cv2
+import math
+import pytesseract
+import matplotlib.pyplot as plt
+
+
+
+img = cv2.imread('Desktop/test10.png')
+
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+ 
+ret,thresh = cv2.threshold(gray,127,255,1)
+ 
+contours,h = cv2.findContours(thresh,1,2)
+rectangles = [] 
+for cnt in contours:
+    approx = cv2.approxPolyDP(cnt,0.01*cv2.arcLength(cnt,True),True)
+   
+    if len(approx)==5:
+        cv2.drawContours(img,[cnt],0,255,-1)
+    elif len(approx)==3:
+        cv2.drawContours(img,[cnt],0,(0,255,0),-1)
+    elif len(approx)==4:
+        tmp =cv2.boundingRect(cnt)
+        if tmp[2] >50 and tmp[3] >50:
+            rectangles.append( cv2.boundingRect(cnt))
+        cv2.rectangle(img, cv2.boundingRect(cnt), (255,255,0), 2)
+        
+    elif len(approx) == 9:
+        cv2.drawContours(img,[cnt],0,(255,255,0),-1)
+    elif len(approx) > 15:
+        cv2.drawContours(img,[cnt],0,(0,255,255),-1)
+
+        
+plt.figure(figsize = (30,30))
+plt.subplot(211),plt.imshow(img),plt.title('image')
+
+plt.show()
+def overlap(outterRect, innerRect):
+    x, y, w, h = outterRect
+    x1, y1, w1, h1 = innerRect
+    if (   (x1+w1) < (x+w)
+        and (x1) > (x)
+        and (y1) > (y)
+        and (y1+h1) < (y+h)
+        ):
+        return True;
+    
+    else:
+        return False;
+
+
+import sys
+def getNotAvailableCordinates(x):
+    stk = []
+    nAvail = []
+    for each in x:
+        if len(stk) == 0:
+         
+            stk.append(each)
+        else:
+            prev = stk.pop()
+            if each[0] <= prev[1] and each[1] > prev[1]:
+                stk.append((prev[0], each[1]))
+            elif prev[1] < each[0]:
+                stk.append(prev)
+                stk.append(each)
+            else:
+                stk.append(prev)
+
+    for each in stk:
+        for index in range(each[0], each[1] + 1):
+            nAvail.append(index)
+    return nAvail
+
+
+def getMaxCut(x, kids, start, end , pos):
+    nAvail = getNotAvailableCordinates(x)
+    maxCut = -1
+    l,r =0,0
+    bf, af = 0, 0
+    for index in range(init[pos], init[pos] + init[pos+2]):
+        if index not in nAvail:
+            beforeCut = []
+            afterCut = []
+            for kid in kids:
+               
+                if kid[pos] + kid[pos + 2] < index:
+                    beforeCut.append(kid)
+                else:
+                    afterCut.append(kid)
+
+            if len(beforeCut) != 0 and len(afterCut) != 0:
+                maxCut = max(maxCut, index) 
+                l ,r = len(beforeCut), len(afterCut)
+                bf,af = beforeCut, afterCut
+                
+    print(l, r)
+    print(bf, af)
+    return maxCut
+
+def getAreaDiff(outterRect, innerRect):
+    x,y,w,h = outterRect
+    x1,y1,w1,h1 = innerRect
+    
+    return ((x+w) * (y+h)) - ((x1+w1) * (y1+h1))
+    
+
+def findKids(init, rectangles):
+        kids = []
+        x= []
+        y = []
+        minArea = sys.maxsize
+        allKids = []
+        for rectangle in rectangles:
+            if overlap(init, rectangle):
+                allKids.append(rectangle)
+  
+        for kidI in allKids:
+            directChild = True
+            for kidJ in allKids:
+                if  overlap(kidJ, kidI):
+                    directChild = False
+            if directChild:
+                x.append((kidI[0], kidI[0] + kidI[2]))
+                y.append((kidI[1], kidI[1] + kidI[3]))
+                kids.append(kidI)
+        return list(set(kids)), x, y
+
+def allKidsAreSame(kids):
+    area = []
+    for kid in kids:
+        area.append( (kid[2])  * (kid[3]) )
+    mx , mn = max(area), min(area)
+    if mx - mn < 150:
+        return True
+    return False
+cnt = 0
+
+treeDct = {}
+nodeIdentifiers = {}
+
+def two_kid_algorithm(init, parent):
+    global cnt
+    x = []
+    y = []
+  
+                 
+    kids, x, y = findKids(init, rectangles)
+    
+
+    print("kids")
+    print(len(kids))
+    
+    if parent in treeDct:
+        treeDct[parent].append(init)
+    else:
+        treeDct[parent] = [init]
+    
+    if len(kids) == 1:
+        two_kid_algorithm(kids[0], init)
+    
+    elif  len(kids) > 1 and allKidsAreSame(kids):
+        
+        for kid in kids:
+            two_kid_algorithm(kid, init)
+            
+    elif len(kids) != 0:
+    
+        x.sort(key = lambda k:(k[0], k[1]))
+        y.sort(key = lambda k:(k[0], k[1]))
+
+
+        maxCutX = getMaxCut(x, kids, init[0], init[0] + init[2], 0)
+        maxCutY = getMaxCut(y, kids, init[1], init[1] + init[3], 1)
+        print(maxCutX, maxCutY)
+
+        if maxCutX != -1:
+
+                #right
+                x,y,w,h = maxCutX , init[1] + 2,  (init[0] + init[2]) - maxCutX  ,  init[3] - 5 
+                cv2.rectangle(img, (x,y,w,h), (50,50,50), 1)
+      
+                two_kid_algorithm((x,y,w,h), init)
+
+                #left
+                x,y,w,h = init[0] + 5 , init[1] + 2,   maxCutX - init[0] - 10  ,  init[3] - 5 
+                cv2.rectangle(img, (x,y,w,h), (100,100,100), 1)
+                
+                two_kid_algorithm((x,y,w,h), init)
+
+        elif maxCutY != -1:
+                #down
+                x,y,w,h = init[0] + 5 , maxCutY , init[2] - 10,  (init[1] + init[3]) - maxCutY - 3
+                cv2.rectangle(img, (x,y,w,h), (0,0, 255), 1)
+                
+                two_kid_algorithm((x,y,w,h), init)
+
+                #top
+                x,y,w,h = init[0] + 5 , init[1] + 5, init[2] - 10, maxCutY - init[1] - 10 
+                cv2.rectangle(img, (x,y,w,h), (255, 0, 0), 1)
+                
+                two_kid_algorithm((x,y,w,h), init)
+
+        
+
+    
+
+    
+rectangles.sort(key=lambda k: (k[0],k[1]))
+two_kid_algorithm(rectangles[0], (-1,-1,-1,-1))
+
+plt.figure(figsize = (50,50))
+plt.subplot(211),plt.imshow(img),plt.title('image')
+
+plt.show()
+print(treeDct)
